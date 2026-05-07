@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bridge Defect Analysis - Draw & Buffer Tools</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    
+    <!-- Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    
+    <!-- Turf.js for geospatial analysis -->
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #header {
+            background: linear-gradient(135deg, #1a472a, #2d6a4f);
+            color: white;
+            padding: 12px 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        #header h1 {
+            font-size: 1.3em;
+            margin-bottom: 4px;
+        }
+        
+        #header p {
+            font-size: 0.8em;
+            opacity: 0.9;
+        }
+        
+        #main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        #toolbar {
+            width: 320px;
+            background: #f8f9fa;
+            border-right: 1px solid #dee2e6;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            z-index: 10;
+        }
+        
+        #map-container {
+            flex: 1;
+            position: relative;
+        }
+        
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        
+        .tool-section {
+            padding: 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .tool-section h3 {
+            color: #1a472a;
+            margin-bottom: 12px;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .tool-group {
+            margin-bottom: 15px;
+        }
+        
+        .tool-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.85em;
+        }
+        
+        input, select, button {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        button {
+            background: #2d6a4f;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+        
+        button:hover {
+            background: #1a472a;
+            transform: translateY(-1px);
+        }
+        
+        button.danger {
+            background: #dc3545;
+        }
+        
+        button.danger:hover {
+            background: #c82333;
+        }
+        
+        button.secondary {
+            background: #6c757d;
+        }
+        
+        button.secondary:hover {
+            background: #5a6268;
+        }
+        
+        .results-area {
+            background: #e9ecef;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 15px;
+        }
+        
+        .results-area h4 {
+            color: #1a472a;
+            margin-bottom: 10px;
+            font-size: 0.95em;
+        }
+        
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #cdd4d9;
+            font-size: 0.85em;
+        }
+        
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+        
+        .stat-label {
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .stat-value {
+            color: #2d6a4f;
+            font-weight: bold;
+        }
+        
+        .defect-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+        
+        .defect-item {
+            background: white;
+            padding: 8px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            font-size: 0.8em;
+            border-left: 3px solid #ffc107;
+        }
+        
+        .defect-name {
+            font-weight: bold;
+            color: #1a472a;
+        }
+        
+        .active-tool {
+            background: #e8f5e9;
+            border: 2px solid #2d6a4f;
+        }
+        
+        .info-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7em;
+            font-weight: bold;
+        }
+        
+        .severity-high { background: #dc3545; color: white; }
+        .severity-medium { background: #ffc107; color: #000; }
+        .severity-low { background: #28a745; color: white; }
+        
+        #status-bar {
+            background: #fff3cd;
+            padding: 8px 15px;
+            border-top: 1px solid #ffeeba;
+            font-size: 0.8em;
+            color: #856404;
+        }
+        
+        @media (max-width: 768px) {
+            #toolbar {
+                position: absolute;
+                left: -320px;
+                height: 100%;
+                transition: left 0.3s;
+                z-index: 1000;
+                background: white;
+            }
+            
+            #toolbar.open {
+                left: 0;
+            }
+            
+            #toggle-toolbar {
+                display: block;
+                position: absolute;
+                left: 10px;
+                top: 10px;
+                z-index: 1001;
+                background: #2d6a4f;
+                color: white;
+                border: none;
+                padding: 8px 12px;
+                border-radius: 6px;
+                cursor: pointer;
+            }
+        }
+        
+        #toggle-toolbar {
+            display: none;
+        }
+        
+        .file-input-label {
+            background: #6c757d;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: center;
+            display: inline-block;
+            width: 100%;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .file-input-label:hover {
+            background: #5a6268;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1><i class="fas fa-draw-polygon"></i> Bridge Defect Analysis GIS</h1>
+        <p>Draw polygons / Use buffer tool | Calculate total defect areas within selection</p>
+    </div>
+    
+    <div id="main-container">
+        <div id="toolbar">
+            <div class="tool-section">
+                <h3><i class="fas fa-database"></i> Data Management</h3>
+                <div class="tool-group">
+                    <label for="geojsonFile"><i class="fas fa-upload"></i> Load Your GeoJSON File</label>
+                    <input type="file" id="geojsonFile" accept=".geojson,.json">
+                    <button id="loadSampleData" class="secondary" style="margin-top: 8px;">
+                        <i class="fas fa-chart-line"></i> Load Sample Defect Data
+                    </button>
+                    <button id="loadLocalDefectData" class="secondary" style="margin-top: 8px;">
+                        <i class="fas fa-folder-open"></i> Load Local defect.json
+                    </button>
+                </div>
+            </div>
+            
+            <div class="tool-section">
+                <h3><i class="fas fa-mouse-pointer"></i> Selection Tools</h3>
+                
+                <div class="tool-group">
+                    <label><i class="fas fa-draw-polygon"></i> Manual Polygon Drawing</label>
+                    <button id="startDrawPolygon" class="active-tool">
+                        <i class="fas fa-pencil-ruler"></i> Draw Polygon on Map
+                    </button>
+                    <button id="clearDrawings" class="danger" style="margin-top: 5px;">
+                        <i class="fas fa-trash"></i> Clear All Drawings
+                    </button>
+                </div>
+                
+                <div class="tool-group">
+                    <label><i class="fas fa-expand-alt"></i> Buffer Tool</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="number" id="bufferDistance" placeholder="Distance" value="50" step="10" style="flex:1">
+                        <select id="bufferUnit" style="width: 80px;">
+                            <option value="meters">Meters</option>
+                            <option value="kilometers">km</option>
+                            <option value="miles">Miles</option>
+                        </select>
+                    </div>
+                    <button id="enableBufferMode">
+                        <i class="fas fa-circle"></i> Click Point for Buffer
+                    </button>
+                    <button id="clearBuffer" class="secondary" style="margin-top: 5px;">
+                        <i class="fas fa-eraser"></i> Clear Buffer
+                    </button>
+                </div>
+            </div>
+            
+            <div class="tool-section">
+                <h3><i class="fas fa-chart-pie"></i> Analysis Results</h3>
+                <div class="results-area" id="results">
+                    <h4><i class="fas fa-calculator"></i> Selection Summary</h4>
+                    <div id="selectionSummary">
+                        <div class="stat-item">
+                            <span class="stat-label">Selection Method:</span>
+                            <span class="stat-value" id="selectionMethod">None</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Defects Selected:</span>
+                            <span class="stat-value" id="defectCount">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Total Area:</span>
+                            <span class="stat-value" id="totalArea">0 m²</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Total Length (Linear):</span>
+                            <span class="stat-value" id="totalLength">0 m</span>
+                        </div>
+                    </div>
+                    
+                    <h4 style="margin-top: 15px;"><i class="fas fa-list"></i> Selected Defects</h4>
+                    <div id="defectList" class="defect-list">
+                        <p style="color: #6c757d; text-align: center;">No defects selected</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tool-section">
+                <h3><i class="fas fa-download"></i> Export Results</h3>
+                <button id="exportResults">
+                    <i class="fas fa-file-export"></i> Export as GeoJSON
+                </button>
+                <button id="exportCSV" class="secondary" style="margin-top: 5px;">
+                    <i class="fas fa-table"></i> Export as CSV
+                </button>
+            </div>
+        </div>
+        
+        <div id="map-container">
+            <div id="map"></div>
+            <button id="toggle-toolbar">
+                <i class="fas fa-bars"></i> Tools
+            </button>
+        </div>
+    </div>
+    
+    <div id="status-bar">
+        <i class="fas fa-info-circle"></i> 
+        <span id="statusMessage">Ready. Load data or draw a selection area.</span>
+    </div>
+
+    <script>
+        // Initialize map
+        const map = L.map('map').setView([34.0512, -118.2505], 15);
+        
+        // Add base map (satellite for better visualization)
+        L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+            attribution: '&copy; Google Maps'
+        }).addTo(map);
+        
+        // Layer groups
+        let defectLayer = L.layerGroup().addTo(map);
+        let drawingLayer = L.layerGroup().addTo(map);
+        let bufferLayer = L.layerGroup().addTo(map);
+        
+        // Variables for drawing and selection
+        let drawControl = null;
+        let currentPolygon = null;
+        let currentBuffer = null;
+        let currentSelectionMethod = 'none';
+        let currentDefectsData = [];
+        
+        // Sample defect data (polygons representing bridge defects)
+        const sampleDefects = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "id": "DEF-001",
+                        "name": "Longitudinal Crack",
+                        "type": "crack",
+                        "severity": "high",
+                        "area_m2": 0.45,
+                        "length_m": 2.4,
+                        "inspection_date": "2026-05-06"
+                    },
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[
+                            [-118.2515, 34.0515],
+                            [-118.2505, 34.0515],
+                            [-118.2505, 34.0505],
+                            [-118.2515, 34.0505],
+                            [-118.2515, 34.0515]
+                        ]]
+                    }
+                },
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "id": "DEF-002",
+                        "name": "Concrete Spalling",
+                        "type": "spalling",
+                        "severity": "high",
+                        "area_m2": 0.89,
+                        "length_m": 0,
+                        "inspection_date": "2026-05-06"
+                    },
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[
+                            [-118.2525, 34.0510],
+                            [-118.2518, 34.0510],
+                            [-118.2518, 34.0503],
+                            [-118.2525, 34.0503],
+                            [-118.2525, 34.0510]
+                        ]]
+                    }
+                },
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "id": "DEF-003",
+                        "name": "Rust Staining",
+                        "type": "corrosion",
+                        "severity": "medium",
+                        "area_m2": 0.32,
+                        "length_m": 1.2,
+                        "inspection_date": "2026-05-05"
+                    },
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[
+                            [-118.2495, 34.0520],
+                            [-118.2488, 34.0520],
+                            [-118.2488, 34.0512],
+                            [-118.2495, 34.0512],
+                            [-118.2495, 34.0520]
+                        ]]
+                    }
+                },
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "id": "DEF-004",
+                        "name": "Settlement Crack",
+                        "type": "crack",
+                        "severity": "medium",
+                        "area_m2": 0.23,
+                        "length_m": 1.8,
+                        "inspection_date": "2026-05-04"
+                    },
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[
+                            [-118.2500, 34.0525],
+                            [-118.2493, 34.0525],
+                            [-118.2493, 34.0518],
+                            [-118.2500, 34.0518],
+                            [-118.2500, 34.0525]
+                        ]]
+                    }
+                },
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "id": "DEF-005",
+                        "name": "Expansion Joint Damage",
+                        "type": "joint",
+                        "severity": "high",
+                        "area_m2": 0.67,
+                        "length_m": 0,
+                        "inspection_date": "2026-05-06"
+                    },
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[
+                            [-118.2530, 34.0508],
+                            [-118.2522, 34.0508],
+                            [-118.2522, 34.0500],
+                            [-118.2530, 34.0500],
+                            [-118.2530, 34.0508]
+                        ]]
+                    }
+                },
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "id": "DEF-006",
+                        "name": "Water Staining",
+                        "type": "staining",
+                        "severity": "low",
+                        "area_m2": 0.78,
+                        "length_m": 0,
+                        "inspection_date": "2026-05-03"
+                    },
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[
+                            [-118.2480, 34.0515],
+                            [-118.2473, 34.0515],
+                            [-118.2473, 34.0507],
+                            [-118.2480, 34.0507],
+                            [-118.2480, 34.0515]
+                        ]]
+                    }
+                }
+            ]
+        };
+        
+        // Style function for defect polygons
+        function styleDefect(feature) {
+            const severity = feature.properties.severity;
+            let color = '#28a745'; // low - green
+            
+            if (severity === 'high') color = '#dc3545'; // red
+            else if (severity === 'medium') color = '#ffc107'; // yellow
+            
+            return {
+                color: color,
+                weight: 2,
+                fillColor: color,
+                fillOpacity: 0.3,
+                opacity: 0.8
+            };
+        }
+        
+        // Convert Esri JSON to GeoJSON
+        function convertEsriToGeoJSON(esriData) {
+            const geojson = {
+                type: "FeatureCollection",
+                features: []
+            };
+            
+            esriData.features.forEach(feature => {
+                const geojsonFeature = {
+                    type: "Feature",
+                    properties: feature.attributes,
+                    geometry: {
+                        type: "Polygon",
+                        coordinates: feature.geometry.rings
+                    }
+                };
+                geojson.features.push(geojsonFeature);
+            });
+            
+            return geojson;
+        }
+        
+        // Load defects onto map
+        function loadDefects(geojsonData) {
+            defectLayer.clearLayers();
+            currentDefectsData = geojsonData.features;
+            
+            L.geoJSON(geojsonData, {
+                style: styleDefect,
+                onEachFeature: function(feature, layer) {
+                    const props = feature.properties;
+                    layer.bindTooltip(`
+                        <strong>${props.name || props.id}</strong><br>
+                        Type: ${props.type}<br>
+                        Severity: ${props.severity}<br>
+                        Area: ${props.area_m2 || 0} m²
+                    `, { sticky: true });
+                    
+                    layer.on('click', function(e) {
+                        updateStatusMessage(`Clicked: ${props.name} - Area: ${props.area_m2} m²`);
+                    });
+                }
+            }).addTo(defectLayer);
+            
+            updateStatusMessage(`Loaded ${geojsonData.features.length} defect polygons`);
+            
+            // Fit bounds to show all defects
+            const bounds = L.geoJSON(geojsonData).getBounds();
+            if (bounds.isValid()) map.fitBounds(bounds);
+        }
+        
+        // Calculate area of polygon in square meters
+        function calculatePolygonArea(polygonGeoJSON) {
+            try {
+                const area = turf.area(polygonGeoJSON);
+                return area;
+            } catch(e) {
+                console.error('Area calculation error:', e);
+                return 0;
+            }
+        }
+        
+        // Select defects within a polygon
+        function selectDefectsWithinPolygon(selectionPolygon) {
+            if (!selectionPolygon || currentDefectsData.length === 0) return [];
+            
+            const selected = [];
+            let totalArea = 0;
+            let totalLength = 0;
+            
+            currentDefectsData.forEach(defect => {
+                const defectPolygon = turf.polygon(defect.geometry.coordinates);
+                
+                // Check if defect polygon intersects with selection polygon
+                if (turf.booleanIntersects(defectPolygon, selectionPolygon)) {
+                    selected.push(defect);
+                    totalArea += defect.properties.area_m2 || 0;
+                    totalLength += defect.properties.length_m || 0;
+                }
+            });
+            
+            return { selected, totalArea, totalLength };
+        }
+        
+        // Update UI with selection results
+        function updateResults(selectedDefects, totalArea, totalLength, method) {
+            document.getElementById('selectionMethod').textContent = method;
+            document.getElementById('defectCount').textContent = selectedDefects.length;
+            document.getElementById('totalArea').textContent = `${totalArea.toFixed(2)} m²`;
+            document.getElementById('totalLength').textContent = `${totalLength.toFixed(2)} m`;
+            
+            const defectListDiv = document.getElementById('defectList');
+            
+            if (selectedDefects.length === 0) {
+                defectListDiv.innerHTML = '<p style="color: #6c757d; text-align: center;">No defects selected</p>';
+                return;
+            }
+            
+            defectListDiv.innerHTML = selectedDefects.map(defect => `
+                <div class="defect-item">
+                    <div class="defect-name">${defect.properties.name || defect.properties.id}</div>
+                    <div>Type: ${defect.properties.type}</div>
+                    <div>Severity: <span class="info-badge severity-${defect.properties.severity}">${defect.properties.severity}</span></div>
+                    <div>Area: ${(defect.properties.area_m2 || 0).toFixed(2)} m²</div>
+                    <div>Length: ${(defect.properties.length_m || 0).toFixed(2)} m</div>
+                </div>
+            `).join('');
+        }
+        
+        // Perform analysis on current selection
+        function performAnalysis(selectionPolygon, method) {
+            if (!selectionPolygon) {
+                updateResults([], 0, 0, 'None');
+                updateStatusMessage('No selection area defined');
+                return;
+            }
+            
+            const { selected, totalArea, totalLength } = selectDefectsWithinPolygon(selectionPolygon);
+            updateResults(selected, totalArea, totalLength, method);
+            updateStatusMessage(`Selected ${selected.length} defects with total area ${totalArea.toFixed(2)} m²`);
+        }
+        
+        // Drawing control setup
+        function setupDrawingControls() {
+            if (drawControl) {
+                map.removeControl(drawControl);
+            }
+            
+            drawControl = new L.Draw.Polygon(map, {
+                shapeOptions: {
+                    color: '#2d6a4f',
+                    weight: 3,
+                    opacity: 0.8,
+                    fillColor: '#2d6a4f',
+                    fillOpacity: 0.2
+                },
+                showArea: true,
+                showLength: true,
+                metric: true
+            });
+            
+            drawControl.enable();
+            
+            map.on('draw:created', function(e) {
+                const layer = e.layer;
+                const drawnPolygon = layer.toGeoJSON();
+                
+                // Clear previous selection
+                drawingLayer.clearLayers();
+                
+                // Add new polygon to drawing layer
+                drawingLayer.addLayer(layer);
+                currentPolygon = drawnPolygon;
+                currentBuffer = null;
+                bufferLayer.clearLayers();
+                
+                performAnalysis(currentPolygon, 'Manual Polygon');
+                
+                updateStatusMessage('Manual polygon drawn - analysis complete');
+            });
+        }
+        
+        // Buffer tool
+        function createBuffer(centerPoint, distance, unit) {
+            try {
+                let bufferDistance = distance;
+                if (unit === 'kilometers') bufferDistance = distance * 1000;
+                if (unit === 'miles') bufferDistance = distance * 1609.34;
+                
+                const point = turf.point([centerPoint.lng, centerPoint.lat]);
+                const buffered = turf.buffer(point, bufferDistance, { units: 'meters' });
+                
+                return buffered;
+            } catch(e) {
+                console.error('Buffer creation error:', e);
+                return null;
+            }
+        }
+        
+        // Event Listeners
+        document.getElementById('startDrawPolygon').addEventListener('click', function() {
+            setupDrawingControls();
+            updateStatusMessage('Drawing mode active - click on map to draw polygon');
+            
+            // Visual feedback
+            this.classList.add('active-tool');
+            document.getElementById('enableBufferMode').classList.remove('active-tool');
+        });
+        
+        document.getElementById('clearDrawings').addEventListener('click', function() {
+            drawingLayer.clearLayers();
+            currentPolygon = null;
+            performAnalysis(null, 'None');
+            updateStatusMessage('All drawings cleared');
+        });
+        
+        document.getElementById('enableBufferMode').addEventListener('click', function() {
+            updateStatusMessage('Buffer mode - click on map to create buffer zone');
+            
+            this.classList.add('active-tool');
+            document.getElementById('startDrawPolygon').classList.remove('active-tool');
+            
+            const bufferHandler = function(e) {
+                const distance = parseFloat(document.getElementById('bufferDistance').value);
+                const unit = document.getElementById('bufferUnit').value;
+                
+                const bufferGeoJSON = createBuffer(e.latlng, distance, unit);
+                
+                if (bufferGeoJSON) {
+                    bufferLayer.clearLayers();
+                    currentBuffer = bufferGeoJSON;
+                    currentPolygon = null;
+                    drawingLayer.clearLayers();
+                    
+                    // Add buffer to map
+                    L.geoJSON(bufferGeoJSON, {
+                        style: {
+                            color: '#007bff',
+                            weight: 2,
+                            fillColor: '#007bff',
+                            fillOpacity: 0.2,
+                            dashArray: '5, 5'
+                        }
+                    }).addTo(bufferLayer);
+                    
+                    performAnalysis(bufferGeoJSON, `Buffer (${distance} ${unit})`);
+                    updateStatusMessage(`Buffer created - analyzing defects within ${distance} ${unit}`);
+                } else {
+                    updateStatusMessage('Failed to create buffer');
+                }
+                
+                map.off('click', bufferHandler);
+            };
+            
+            map.on('click', bufferHandler);
+        });
+        
+        document.getElementById('clearBuffer').addEventListener('click', function() {
+            bufferLayer.clearLayers();
+            currentBuffer = null;
+            performAnalysis(null, 'None');
+            updateStatusMessage('Buffer cleared');
+        });
+        
+        // Load GeoJSON file
+        document.getElementById('geojsonFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const data = JSON.parse(evt.target.result);
+                    let geojson;
+                    
+                    // Check if it's Esri JSON format
+                    if (data.geometryType === 'esriGeometryPolygon' && data.features && data.features[0].geometry.rings) {
+                        geojson = convertEsriToGeoJSON(data);
+                        updateStatusMessage(`Converted Esri JSON to GeoJSON and loaded ${geojson.features.length} defects`);
+                    } else {
+                        geojson = data;
+                        updateStatusMessage(`Loaded ${geojson.features.length} defects from GeoJSON file`);
+                    }
+                    
+                    loadDefects(geojson);
+                } catch(err) {
+                    updateStatusMessage('Error loading file - invalid JSON format');
+                    console.error(err);
+                }
+            };
+            reader.readAsText(file);
+        });
+        
+        // Load sample data
+        document.getElementById('loadSampleData').addEventListener('click', function() {
+            loadDefects(sampleDefects);
+            updateStatusMessage('Sample bridge defect data loaded');
+        });
+        
+        // Export results
+        document.getElementById('exportResults').addEventListener('click', function() {
+            const { selected } = selectDefectsWithinPolygon(currentPolygon || currentBuffer);
+            if (selected.length === 0) {
+                updateStatusMessage('No defects selected to export');
+                return;
+            }
+            
+            const exportGeoJSON = {
+                type: 'FeatureCollection',
+                features: selected
+            };
+            
+            const dataStr = JSON.stringify(exportGeoJSON, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `selected_defects_${new Date().toISOString()}.geojson`;
+            a.click();
+            URL.revokeObjectURL(url);
+            updateStatusMessage('Exported selected defects as GeoJSON');
+        });
+        
+        document.getElementById('exportCSV').addEventListener('click', function() {
+            const { selected } = selectDefectsWithinPolygon(currentPolygon || currentBuffer);
+            if (selected.length === 0) {
+                updateStatusMessage('No defects selected to export');
+                return;
+            }
+            
+            let csv = 'ID,Name,Type,Severity,Area_m2,Length_m,Inspection_Date\n';
+            selected.forEach(defect => {
+                const props = defect.properties;
+                csv += `"${props.id}","${props.name}","${props.type}","${props.severity}",${props.area_m2 || 0},${props.length_m || 0},"${props.inspection_date}"\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `selected_defects_${new Date().toISOString()}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            updateStatusMessage('Exported selected defects as CSV');
+        });
+        
+        // Mobile toolbar toggle
+        document.getElementById('toggle-toolbar').addEventListener('click', function() {
+            document.getElementById('toolbar').classList.toggle('open');
+        });
+        
+        // Update status message
+        function updateStatusMessage(message) {
+            document.getElementById('statusMessage').textContent = message;
+            setTimeout(() => {
+                if (document.getElementById('statusMessage').textContent === message) {
+                    // Keep for a while, don't auto-clear
+                }
+            }, 3000);
+        }
+        
+        // Load sample data on startup
+        loadDefects(sampleDefects);
+        
+        // Add scale bar
+        L.control.scale({ metric: true, imperial: true }).addTo(map);
+        
+        console.log('Bridge Defect Analysis Tool Ready');
+    </script>
+</body>
+</html>
